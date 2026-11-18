@@ -1,0 +1,505 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>バンジージャンプ体験</title>
+  <script src="https://aframe.io/releases/1.8.0/aframe.min.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: "Noto Sans JP", sans-serif;
+    }
+
+    #ui {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    #panel {
+      width: min(90%, 420px);
+      padding: 30px 24px;
+      text-align: center;
+      color: white;
+      background: rgba(0, 0, 0, 0.75);
+      border-radius: 18px;
+      pointer-events: auto;
+    }
+
+    #panel h1 {
+      font-size: 28px;
+      margin: 0 0 16px;
+    }
+
+    #panel p {
+      font-size: 16px;
+      line-height: 1.8;
+      margin: 0 0 24px;
+    }
+
+    #actionButton {
+      border: none;
+      border-radius: 10px;
+      padding: 14px 36px;
+      font-size: 20px;
+      font-weight: bold;
+      color: white;
+      background: #e64b35;
+      cursor: pointer;
+    }
+
+    #actionButton:active {
+      transform: scale(0.96);
+    }
+
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="ui">
+    <div id="panel">
+      <h1 id="title">バンジージャンプ体験</h1>
+      <p id="description">
+        高さ200mの足場から飛び降りる体験です。<br>
+        準備ができたらスタートしてください。
+      </p>
+      <button id="actionButton">スタート</button>
+    </div>
+  </div>
+
+  <a-scene
+    background="color: #87CEEB"
+    renderer="antialias: true"
+    vr-mode-ui="enabled: true"
+  >
+
+    <!-- 空 -->
+    <a-sky color="#87CEEB"></a-sky>
+
+    <!-- 地面 -->
+    <a-plane
+      rotation="-90 0 0"
+      width="2000"
+      height="2000"
+      color="#557b43"
+      position="0 0 0"
+    ></a-plane>
+
+    <!-- タワー -->
+    <a-box
+      position="0 100 8"
+      width="14"
+      height="200"
+      depth="14"
+      color="#777777"
+    ></a-box>
+
+    <a-box
+      position="0 100 0.85"
+      width="14.5"
+      height="200"
+      depth="0.3"
+      color="#555555"
+    ></a-box>
+
+    <!-- 足場 -->
+    <a-box
+      position="0 198.4 -1"
+      width="14"
+      height="0.8"
+      depth="20"
+      color="#444444"
+    ></a-box>
+
+    <!-- 足場の柵 -->
+    <a-box
+      position="-6.8 199.5 -1"
+      width="0.3"
+      height="2.2"
+      depth="20"
+      color="#888888"
+    ></a-box>
+
+    <a-box
+      position="6.8 199.5 -1"
+      width="0.3"
+      height="2.2"
+      depth="20"
+      color="#888888"
+    ></a-box>
+
+    <a-box
+      position="0 199.5 8.5"
+      width="14"
+      height="2.2"
+      depth="0.3"
+      color="#888888"
+    ></a-box>
+
+    <!-- プレイヤー -->
+    <a-entity id="player" position="0 200 3">
+      <a-camera
+        id="camera"
+        wasd-controls-enabled="false"
+        look-controls="enabled: true"
+      ></a-camera>
+    </a-entity>
+
+  </a-scene>
+
+  <script>
+    const scene = document.querySelector("a-scene");
+    const player = document.querySelector("#player");
+    const camera = document.querySelector("#camera");
+
+    const panel = document.querySelector("#panel");
+    const title = document.querySelector("#title");
+    const description = document.querySelector("#description");
+    const actionButton = document.querySelector("#actionButton");
+
+    let state = "ready";
+    let elapsed = 0;
+    let lastTime = 0;
+    let walkStartZ = 3;
+
+    // 高さの設定
+    const startHeight = 200;
+    const endHeight = 10;
+
+    // 落下時間
+    const fallDuration = 3;
+
+    // 歩行時間
+    const walkDuration = 3;
+
+    // 反動時間
+    const bounceDuration = 3;
+
+    // ビルを生成
+    function createBuilding(x, z, width, depth, height, color) {
+      const building = document.createElement("a-entity");
+
+      building.setAttribute(
+        "position",
+        `${x} ${height / 2} ${z}`
+      );
+
+      // 建物本体
+      const body = document.createElement("a-box");
+
+      body.setAttribute("width", width);
+      body.setAttribute("height", height);
+      body.setAttribute("depth", depth);
+      body.setAttribute("color", color);
+
+      building.appendChild(body);
+
+      // 窓
+      const windowColors = [
+        "#b9d4df",
+        "#d8e4e8",
+        "#839eaa",
+        "#a7b9bd"
+      ];
+
+      const floors = Math.floor(height / 7);
+      const columns = Math.max(2, Math.floor(width / 4));
+
+      for (let floor = 0; floor < floors; floor++) {
+        for (let col = 0; col < columns; col++) {
+
+          const windowBox = document.createElement("a-box");
+
+          const xPosition =
+            -width / 2 + (width / (columns + 1)) * (col + 1);
+
+          const yPosition =
+            -height / 2 + floor * 7 + 3.5;
+
+          windowBox.setAttribute(
+            "position",
+            `${xPosition} ${yPosition} ${depth / 2 + 0.03}`
+          );
+
+          windowBox.setAttribute("width", "1.5");
+          windowBox.setAttribute("height", "2.8");
+          windowBox.setAttribute("depth", "0.05");
+
+          windowBox.setAttribute(
+            "color",
+            windowColors[
+              Math.floor(Math.random() * windowColors.length)
+            ]
+          );
+
+          building.appendChild(windowBox);
+        }
+      }
+
+      // 階ごとの水平ライン
+      for (let floor = 1; floor < floors; floor++) {
+        const line = document.createElement("a-box");
+
+        line.setAttribute(
+          "position",
+          `0 ${-height / 2 + floor * 7} ${depth / 2 + 0.05}`
+        );
+
+        line.setAttribute("width", width);
+        line.setAttribute("height", "0.15");
+        line.setAttribute("depth", "0.05");
+        line.setAttribute("color", "#555555");
+
+        building.appendChild(line);
+      }
+
+      // 屋上設備
+      const rooftop = document.createElement("a-box");
+
+      rooftop.setAttribute(
+        "position",
+        `0 ${height / 2 + 1.5} 0`
+      );
+
+      rooftop.setAttribute("width", width * 0.35);
+      rooftop.setAttribute("height", "3");
+      rooftop.setAttribute("depth", depth * 0.35);
+      rooftop.setAttribute("color", "#666666");
+
+      building.appendChild(rooftop);
+
+      scene.appendChild(building);
+    }
+
+    // 街並みを生成
+    function createCity() {
+      const colors = [
+        "#777d82",
+        "#a0a5a8",
+        "#686f75",
+        "#858b90",
+        "#9b9b96",
+        "#747d83",
+        "#606b72",
+        "#92999c"
+      ];
+
+      // ビルを100棟配置
+      for (let i = 0; i < 100; i++) {
+
+        const side = Math.random() > 0.5 ? 1 : -1;
+
+        // 左右のビルを近づける
+        const x = side * (17 + Math.random() * 55);
+
+        // 奥行き方向にも密集させる
+        const z = -20 - Math.random() * 650;
+
+        const width = 12 + Math.random() * 15;
+        const depth = 12 + Math.random() * 15;
+        const height = 120 + Math.random() * 80;
+
+        const color =
+          colors[Math.floor(Math.random() * colors.length)];
+
+        createBuilding(
+          x,
+          z,
+          width,
+          depth,
+          height,
+          color
+        );
+      }
+    }
+
+    createCity();
+
+    // 画面表示
+    function showPanel(newTitle, newDescription, buttonText) {
+      panel.classList.remove("hidden");
+
+      title.textContent = newTitle;
+      description.innerHTML = newDescription;
+      actionButton.textContent = buttonText;
+    }
+
+    function hidePanel() {
+      panel.classList.add("hidden");
+    }
+
+    // スタート
+    function startExperience() {
+      state = "walking";
+      elapsed = 0;
+
+      walkStartZ = player.object3D.position.z;
+
+      hidePanel();
+    }
+
+    // ジャンプ
+    function jump() {
+      state = "falling";
+      elapsed = 0;
+      lastTime = 0;
+
+      hidePanel();
+    }
+
+    // 再挑戦
+    function restart() {
+      player.object3D.position.set(0, startHeight, 3);
+      player.object3D.rotation.set(0, 0, 0);
+
+      camera.object3D.rotation.set(0, 0, 0);
+
+      state = "ready";
+      elapsed = 0;
+
+      showPanel(
+        "バンジージャンプ体験",
+        "高さ200mの足場から飛び降りる体験です。<br>準備ができたらスタートしてください。",
+        "スタート"
+      );
+    }
+
+    actionButton.addEventListener("click", () => {
+      if (state === "ready") {
+        startExperience();
+      } else if (state === "atEdge") {
+        jump();
+      } else if (state === "complete") {
+        restart();
+      }
+    });
+
+    // アニメーション
+    function animate(time) {
+      requestAnimationFrame(animate);
+
+      if (!lastTime) {
+        lastTime = time;
+      }
+
+      const dt = Math.min((time - lastTime) / 1000, 0.05);
+      lastTime = time;
+
+      const position = player.object3D.position;
+
+      // 足場の先端まで歩く
+      if (state === "walking") {
+        elapsed += dt;
+
+        const progress = Math.min(
+          elapsed / walkDuration,
+          1
+        );
+
+        const easedProgress = progress * progress;
+
+        position.z =
+          walkStartZ + (-8 - walkStartZ) * easedProgress;
+
+        if (progress >= 1) {
+          state = "atEdge";
+
+          showPanel(
+            "準備完了",
+            "目の前に広がる景色を楽しんでください。<br>準備ができたらジャンプしましょう。",
+            "ジャンプ！"
+          );
+        }
+      }
+
+      
+      // 落下
+      else if (state === "falling") {
+        elapsed += dt;
+
+        const progress = Math.min(
+          elapsed / fallDuration,
+          1
+        );
+
+        // 後半に向かって急激に加速する
+        const easedProgress =
+          1 - Math.pow(1 - progress, 3);
+
+        position.y =
+          startHeight -
+          (startHeight - endHeight) * easedProgress;
+
+        // 落下中の視点の揺れ（控えめ）
+        player.object3D.rotation.z =
+          Math.sin(elapsed * 24) * 0.003;
+
+        player.object3D.rotation.x =
+          Math.sin(elapsed * 17) * 0.002;
+
+        // 少しだけ下を向く
+        camera.object3D.rotation.x = -0.04;
+
+        if (progress >= 1) {
+          position.y = endHeight;
+
+          // 揺れをリセット
+          player.object3D.rotation.set(0, 0, 0);
+
+          state = "bouncing";
+          elapsed = 0;
+        }
+      }
+
+      // 反動
+      else if (state === "bouncing") {
+        elapsed += dt;
+
+        const progress = Math.min(
+          elapsed / bounceDuration,
+          1
+        );
+
+        const bounceAmount =
+          Math.sin(Math.PI * progress);
+
+        position.y = 10 + bounceAmount * 10;
+
+        if (progress >= 1) {
+          position.y = 10;
+
+          camera.object3D.rotation.set(0, 0, 0);
+
+          state = "complete";
+
+          showPanel(
+            "体験終了！",
+            "バンジージャンプ体験はいかがでしたか？",
+            "もう一度体験する"
+          );
+        }
+      }
+
+    }
+
+    requestAnimationFrame(animate);
+  </script>
+
+</body>
+</html>
